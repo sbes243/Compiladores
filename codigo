@@ -1,0 +1,289 @@
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+using namespace std;
+
+// Tipos de tokens
+enum TokenType {
+    ID,
+    LIT_NUM,
+    LIT_STR,
+    KW_DEF,
+    KW_IF,
+    KW_ELSE,
+    KW_TRUE,
+    KW_FALSE,
+    KW_RETURN,
+    OP_PLUS,
+    OP_MINUS,
+    OP_MULT,
+    OP_DIV,
+    OP_MOD,
+    OP_LT,
+    OP_GT,
+    OP_LE,
+    OP_GE,
+    OP_EQ,
+    OP_NE,
+    OP_ASSIGN,
+    OP_LPAREN,
+    OP_RPAREN,
+    OP_LBRACKET,
+    OP_RBRACKET,
+    OP_COMMA,
+    OP_COLON,
+    OP_DOT,
+    OP_ARROW,
+    NEWLINE,
+    INDENT,
+    DEDENT,
+    END_OF_FILE,
+    ERROR
+};
+
+// Valores de tokens
+struct TokenValue {
+    TokenType type;
+    string str_val;
+    int int_val;
+};
+
+// Palabras reservadas
+unordered_map<string, TokenType> keywords = {
+    {"def", KW_DEF},
+    {"if", KW_IF},
+    {"else", KW_ELSE},
+    {"True", KW_TRUE},
+    {"False", KW_FALSE},
+    {"return", KW_RETURN}
+};
+
+// Función auxiliar para verificar si un caracter es un dígito
+bool is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+// Función auxiliar para verificar si un caracter es una letra
+bool is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+// Función para leer el input desde un archivo o un elemento de área de texto
+string read_input(string filename) {
+    string input;
+    string line;
+    ifstream file(filename);
+    if (file.is_open()) {
+        while (getline(file, line)) {
+            input += line + '\n';
+        }
+        file.close();
+    }
+    return input;
+}
+
+// Función para calcular la indentación
+int calc_indent(string line) {
+    int indent = 0;
+    for (char c : line) {
+        if (c == ' ') {
+            indent++;
+        }
+        else if (c == '\t') {
+            indent += 4;
+        }
+        else {
+            break;
+        }
+    }
+    return indent;
+}
+
+// Función para leer el siguiente caracter del input y mover el puntero del caracter al siguiente
+char get_char(string& input, int& pos) {
+    if (pos >= input.length()) {
+        return '\0';
+    }
+    char c = input[pos];
+    pos++;
+    return c;
+}
+
+// Función para leer el siguiente caracter sin mover el puntero
+char peek_char(string& input, int pos) {
+    if (pos >= input.length()) {
+        return '\0';
+    }
+    return input[pos];
+}
+
+TokenValue get_token(string& input, int& pos, int& line_num, int& col_num) {
+    TokenValue token;
+    string token_str;
+    char c = get_char(input, pos);
+    col_num++;
+
+    // Ignorar espacios y tabs
+    while (c == ' ' || c == '\t') {
+        c = get_char(input, pos);
+        col_num++;
+    }
+
+    // Nuevo línea
+    if (c == '\n') {
+        token.type = NEWLINE;
+        line_num++;
+        col_num = 0;
+    }
+    
+    // Indentación
+    int indent = calc_indent(input.substr(pos-1));
+    if (indent > 0) {
+        token.type = INDENT;
+    }
+
+    // Dindentación
+    int dedent = 0;
+    while (indent < 0 && peek_char(input, pos+dedent) == ' ') {
+        dedent++;
+        indent += 4;
+    }
+    if (dedent > 0) {
+        token.type = DEDENT;
+    }
+
+    // Identificador
+    if (is_alpha(c) || c == '_') {
+        token_str += c;
+        c = peek_char(input, pos);
+        while (is_alpha(c) || is_digit(c) || c == '_') {
+            token_str += get_char(input, pos);
+            c = peek_char(input, pos);
+        }
+        if (keywords.count(token_str)) {
+            token.type = keywords[token_str];
+        } else {
+            token.type = ID;
+        }
+        token.str_val = token_str;
+        token.int_val = 0;
+        return token;
+    }
+
+    // Número
+    if (is_digit(c)) {
+        token_str += c;
+        c = peek_char(input, pos);
+        while (is_digit(c)) {
+            token_str += get_char(input, pos);
+            c = peek_char(input, pos);
+        }
+        token.type = LIT_NUM;
+        token.str_val = token_str;
+        token.int_val = stoi(token_str);
+        return token;
+    }
+
+    // String
+    if (c == '"') {
+        token_str += c;
+        c = peek_char(input, pos);
+        while (c != '\0' && c != '"') {
+            if (c == '\\') {
+                token_str += get_char(input, pos);
+            }
+            token_str += get_char(input, pos);
+            c = peek_char(input, pos);
+        }
+        if (c == '\0') {
+            token.type = ERROR;
+            token.str_val = "Unexpected end of input in string literal";
+            token.int_val = 0;
+            return token;
+        }
+        token_str += get_char(input, pos);
+        token.type = LIT_STR;
+        token.str_val = token_str;
+        token.int_val = 0;
+        return token;
+    }
+
+    // Operadores
+    switch (c) {
+      case '+':
+       token.type = OP_PLUS;
+        break;
+  case '-':
+    token.type = OP_MINUS;
+    break;
+  case '*':
+    token.type = OP_MULT;
+    break;
+  case '/':
+    token.type = OP_DIV;
+    break;
+  case '%':
+    token.type = OP_MOD;
+    break;
+  case '<':
+    if (peek_char(input, pos) == '=') {
+      get_char(input, pos);
+      token.type = OP_LE;
+    } else {
+      token.type = OP_LT;
+    }
+    break;
+  case '>':
+    if (peek_char(input, pos) == '=') {
+      get_char(input, pos);
+      token.type = OP_GE;
+    } else {
+      token.type = OP_GT;
+    }
+    break;
+  case '=':
+    if (peek_char(input, pos) == '=') {
+      get_char(input, pos);
+      token.type = OP_EQ;
+    } else {
+      token.type = OP_ASSIGN;
+    }
+    break;
+  case '!':
+    if (peek_char(input, pos) == '=') {
+      get_char(input, pos);
+      token.type = OP_NE;
+    } else {
+      token.type = ERROR;
+      token.str_val = "Unexpected character '!'";
+      token.int_val = 0;
+      return token;
+    }
+    break;
+  case '(':
+    token.type = OP_LPAREN;
+    break;
+  case ')':
+    token.type = OP_RPAREN;
+    break;
+  case ',':
+    token.type = OP_COMMA;
+    break;
+  case ':':
+    token.type = OP_COLON;
+    break;
+  default:
+    token.type = ERROR;
+    token.str_val = "Unexpected character '" + string(1, c) + "'";
+    token.int_val = 0;
+    break;
+}
+return token;
+}  
+// Función
+int main() {
+  std::cout << "Hello World!\n";
+}
